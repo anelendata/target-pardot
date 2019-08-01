@@ -15,7 +15,7 @@ import pkg_resources
 from jsonschema.validators import Draft4Validator
 import singer
 
-import pardot
+import sync_pardot as destination
 
 REQUIRED_CONFIG_KEYS = ["email", "password", "user_key", "email_field", "sync_keys"]
 
@@ -47,6 +47,9 @@ def persist_lines(config, lines):
 
     now = datetime.now().strftime('%Y%m%dT%H%M%S')
 
+    with open(config["mapper_file"], "r") as f:
+        mapper = json.load(f)
+
     # Loop over lines from stdin
     for line in lines:
         try:
@@ -74,8 +77,7 @@ def persist_lines(config, lines):
             # If the record needs to be flattened, uncomment this line
             flattened_record = flatten(o['record'])
 
-            # TODO: Process Record message here..
-            logger.info("OUT: " + o['record'])
+            destination.write(config, o['record'], mapper, dryrun=False)
 
             state = None
         elif t == 'STATE':
