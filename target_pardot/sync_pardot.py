@@ -33,4 +33,4 @@ def write(config, record, mapper, dryrun=True):
             LOGGER.warn("Error in updating " + prospect_email + " : " + str(e))
             return
         prospect = response["prospect"]
-        LOGGER.info("Wrote {id} {email} https://pi.pardot.com/prospect/read?id={id}".format(**prospect))
+        LOGGER.debug("Wrote {id} {email} https://pi.pardot.com/prospect/read?id={id}".format(**prospect))
