@@ -51,6 +51,7 @@ def persist_lines(config, lines):
         mapper = json.load(f)
 
     # Loop over lines from stdin
+    record_count = 0
     for line in lines:
         try:
             o = json.loads(line)
@@ -78,6 +79,7 @@ def persist_lines(config, lines):
             flattened_record = flatten(o['record'])
 
             destination.write(config, o['record'], mapper, dryrun=False)
+            record_count = record_count + 1
 
             state = None
         elif t == 'STATE':
@@ -96,6 +98,7 @@ def persist_lines(config, lines):
             raise Exception("Unknown message type {} in message {}"
                             .format(o['type'], o))
 
+    logger.info("Updated %d records" % record_count)
     return state
 
 
