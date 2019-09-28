@@ -81,6 +81,9 @@ def persist_lines(config, lines):
             destination.write(config, o['record'], mapper, dryrun=False)
             record_count = record_count + 1
 
+            if record_count % 100 == 0:
+                logger.info("Read %d records" % record_count)
+
             state = None
         elif t == 'STATE':
             logger.debug('Setting state to {}'.format(o['value']))
