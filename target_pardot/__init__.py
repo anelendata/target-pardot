@@ -2,6 +2,7 @@
 
 import argparse
 import io
+import logging
 import os
 import sys
 import json
@@ -15,11 +16,15 @@ import pkg_resources
 from jsonschema.validators import Draft4Validator
 import singer
 
-import sync_pardot as destination
+from . import sync_pardot as destination
 
 REQUIRED_CONFIG_KEYS = ["email", "password", "user_key", "email_field", "sync_keys"]
 
-logger = singer.get_logger()
+logging.basicConfig(stream=sys.stdout,
+                    format="%(asctime)s - " + str(__name__) + " - %(name)s - %(levelname)s - %(message)s",
+                    level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def emit_state(state):
     if state is not None:
@@ -52,6 +57,8 @@ def persist_lines(config, lines):
 
     # Loop over lines from stdin
     record_count = 0
+    write_count = 0
+
     for line in lines:
         try:
             o = json.loads(line)
@@ -78,11 +85,19 @@ def persist_lines(config, lines):
             # If the record needs to be flattened, uncomment this line
             flattened_record = flatten(o['record'])
 
-            destination.write(config, o['record'], mapper, dryrun=False)
+            try:
+                destination.write(config, o['record'], mapper, dryrun=False)
+            except Exception as e:
+                prospect_email = o['record'][config["email_field"]]
+                logger.debug("Error in updating " + prospect_email + " : " + str(e))
+            else:
+                write_count = write_count + 1
+
             record_count = record_count + 1
 
             if record_count % 100 == 0:
                 logger.info("Read %d records" % record_count)
+                logger.info("Wrote %d records" % write_count)
 
             state = None
         elif t == 'STATE':
@@ -101,7 +116,9 @@ def persist_lines(config, lines):
             raise Exception("Unknown message type {} in message {}"
                             .format(o['type'], o))
 
-    logger.info("Updated %d records" % record_count)
+    logger.info("Read %d records" % record_count)
+    logger.info("Wrote %d records" % write_count)
+
     return state
 
 

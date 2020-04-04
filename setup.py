@@ -11,8 +11,9 @@ setup(
     py_modules=["target_pardot"],
     install_requires=[
         "singer-python>=5.0.12",
-        "pypardot4>=1.1.14",
-        "pardot-api-client @ https://github.com/anelendata/pardot-api-client/tarball/master#egg=pardot-api-client",
+        # "pypardot4>=1.1.14",
+        "pardot-api-client @ https://github.com/anelendata/pardot-api-client/tarball/6f2780442ce91faf7ce71d1b7e075eba4ec96175#egg=pardot-api-client",
+        # "pardot-api-client @ https://github.com/anelendata/pardot-api-client/tarball/master#egg=pardot-api-client",
     ],
     dependency_links=[
     ],

@@ -1,11 +1,15 @@
-import json
-
+import json, logging, sys
 from pardot.client import APIClient
 from pardot.resource import PardotAPIException
 import singer
 
 client = None
-LOGGER = singer.get_logger()
+
+logging.basicConfig(stream=sys.stdout,
+                    format="%(asctime)s - " + str(__name__) + " - %(name)s - %(levelname)s - %(message)s",
+                    level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
+
 
 def get_client(config=None):
     global client
@@ -27,10 +31,6 @@ def write(config, record, mapper, dryrun=True):
         pardot_key = mapper[key]["target_key"]
         kwargs[pardot_key] = record[key]
     if dryrun is False:
-        try:
-            response = client.prospect.update(prospect_email, **kwargs)
-        except PardotAPIException as e:
-            LOGGER.warn("Error in updating " + prospect_email + " : " + str(e))
-            return
+        response = client.prospect.update(prospect_email, **kwargs)
         prospect = response["prospect"]
         LOGGER.debug("Wrote {id} {email} https://pi.pardot.com/prospect/read?id={id}".format(**prospect))
