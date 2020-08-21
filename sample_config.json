@@ -1,5 +1,7 @@
 {
-  "username": "my_username",
-  "password": "my_password",
-  "start_date": "2017-01-01T00:00:00Z"
+  "email": "",
+  "password": "",
+  "user_key": "",
+  "email_field": "email",
+  "mapper_file": "./mappers/default.json"
 }

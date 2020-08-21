@@ -5,9 +5,7 @@ import io
 import logging
 import os
 import sys
-import json
-import threading
-import http.client
+import simplejson as json
 import urllib
 from datetime import datetime
 import collections
@@ -16,41 +14,27 @@ import pkg_resources
 from jsonschema.validators import Draft4Validator
 import singer
 
+from . import utils
 from . import sync_pardot as destination
-
-REQUIRED_CONFIG_KEYS = ["email", "password", "user_key", "email_field", "sync_keys"]
-
-logging.basicConfig(stream=sys.stdout,
-                    format="%(asctime)s - " + str(__name__) + " - %(name)s - %(levelname)s - %(message)s",
-                    level=logging.INFO)
-logger = logging.getLogger(__name__)
+from .schema import clean_and_validate
 
 
-def emit_state(state):
-    if state is not None:
-        line = json.dumps(state)
-        logger.debug('Emitting state {}'.format(line))
-        sys.stdout.write("{}\n".format(line))
-        sys.stdout.flush()
+REQUIRED_CONFIG_KEYS = ["email", "password", "user_key", "email_field"]
 
-def flatten(d, parent_key='', sep='__'):
-    items = []
-    for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
-            items.extend(flatten(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, str(v) if type(v) is list else v))
-    return dict(items)
+logger = utils.get_logger(__name__, "debug")
 
-def persist_lines(config, lines):
+
+def write_records(config, lines):
     state = None
     schemas = {}
     key_properties = {}
     headers = {}
     validators = {}
+    on_invalid_record = config.get("on_invalid_record", "abort")
 
-    now = datetime.now().strftime('%Y%m%dT%H%M%S')
+    dry_run = config.get("dry_run", False)
+    if dry_run:
+        logger.info("Dry-run mode")
 
     with open(config["mapper_file"], "r") as f:
         mapper = json.load(f)
@@ -58,113 +42,110 @@ def persist_lines(config, lines):
     # Loop over lines from stdin
     record_count = 0
     write_count = 0
+    invalids = 0
+
+    errors = collections.defaultdict(int)
 
     for line in lines:
         try:
-            o = json.loads(line)
+            message = singer.parse_message(line)
         except json.decoder.JSONDecodeError:
             logger.error("Unable to parse:\n{}".format(line))
             raise
 
-        if 'type' not in o:
-            raise Exception("Line is missing required key 'type': {}".format(line))
-        t = o['type']
+        if isinstance(message, singer.RecordMessage):
+            record, invalids = clean_and_validate(
+                message, schemas, invalids, on_invalid_record,
+                flatten_record=True, json_dumps=False)
 
-        if t == 'RECORD':
-            if 'stream' not in o:
-                raise Exception("Line is missing required key 'stream': {}".format(line))
-            if o['stream'] not in schemas:
-                raise Exception("A record for stream {} was encountered before a corresponding schema".format(o['stream']))
-
-            # Get schema for this record's stream
-            schema = schemas[o['stream']]
-
-            # Validate record
-            validators[o['stream']].validate(o['record'])
-
-            # If the record needs to be flattened, uncomment this line
-            flattened_record = flatten(o['record'])
+            # if len(invalids) > 0:
+            #     pass
 
             try:
-                destination.write(config, o['record'], mapper, dryrun=False)
+                destination.write(config, record, mapper, dryrun=dry_run)
             except Exception as e:
-                prospect_email = o['record'][config["email_field"]]
-                logger.debug("Error in updating " + prospect_email + " : " + str(e))
+                prospect_email = record[config["email_field"]]
+                logger.debug("Error in updating " + prospect_email + " : " +
+                             str(e))
+                errors[e.args[1]] += 1
+                logger.debug(errors)
             else:
                 write_count = write_count + 1
 
             record_count = record_count + 1
 
             if record_count % 100 == 0:
-                logger.info("Read %d records" % record_count)
-                logger.info("Wrote %d records" % write_count)
+                logger.debug("Read %d records" % record_count)
+                logger.debug("Wrote %d records" % write_count)
 
             state = None
-        elif t == 'STATE':
-            logger.debug('Setting state to {}'.format(o['value']))
-            state = o['value']
-        elif t == 'SCHEMA':
-            if 'stream' not in o:
-                raise Exception("Line is missing required key 'stream': {}".format(line))
-            stream = o['stream']
-            schemas[stream] = o['schema']
-            validators[stream] = Draft4Validator(o['schema'])
-            if 'key_properties' not in o:
-                raise Exception("key_properties field is required")
-            key_properties[stream] = o['key_properties']
+
+        elif isinstance(message, singer.StateMessage):
+            state = message.value
+            # State may contain sensitive info. Not logging in production
+            logger.debug("State: %s" % state)
+            currently_syncing = state.get("currently_syncing")
+            bookmarks = state.get("bookmarks")
+            if currently_syncing and bookmarks:
+                logger.info("State: currently_syncing %s - last_update: %s" %
+                            (currently_syncing,
+                             bookmarks.get(currently_syncing, dict()).get(
+                                 "last_update")))
+
+        elif isinstance(message, singer.SchemaMessage):
+            stream = message.stream
+            schemas[stream] = message.schema
+            validators[stream] = Draft4Validator(message.schema)
+            key_properties[stream] = message.key_properties
+
+        elif isinstance(message, singer.ActivateVersionMessage):
+            # This is experimental and won't be used yet
+            pass
+
         else:
             raise Exception("Unknown message type {} in message {}"
-                            .format(o['type'], o))
+                            .format(message.type, message))
 
     logger.info("Read %d records" % record_count)
     logger.info("Wrote %d records" % write_count)
+    for key in errors.keys():
+        logger.info("Unsuccessful cause - %s - %d records" % (key, errors[key]))
 
     return state
 
 
-def send_usage_stats():
-    logger.info("Sending usage report to singer.io...")
-    try:
-        version = pkg_resources.get_distribution('target-csv').version
-        conn = http.client.HTTPConnection('collector.singer.io', timeout=10)
-        conn.connect()
-        params = {
-            'e': 'se',
-            'aid': 'singer',
-            'se_ca': 'target_pardot',
-            'se_ac': 'open',
-            'se_la': version,
-        }
-        conn.request('GET', '/i?' + urllib.parse.urlencode(params))
-        response = conn.getresponse()
-        conn.close()
-    except:
-        logger.debug('Collection request failed')
+def _emit_state(state):
+    if state is None:
+        return
+    line = json.dumps(state)
+    logger.debug("Emitting state {}".format(line))
+    sys.stdout.write("{}\n".format(line))
+    sys.stdout.flush()
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', help='Config file')
+    parser.add_argument("-c", "--config", help="A JSON-format config file")
+
+    if len(sys.argv) == 1 or sys.argv[1] in ["-h", "--help"]:
+        parser.print_help(sys.stderr)
+        exit(1)
+
     args = parser.parse_args()
 
     if args.config:
-        with open(args.config) as input:
-            config = json.load(input)
+        with open(args.config) as input_:
+            config = json.load(input_)
     else:
         config = {}
 
-    if not config.get('disable_collection', True):
-        logger.info('Sending version information to singer.io. ' +
-                    'To disable sending anonymous usage data, set ' +
-                    'the config parameter "disable_collection" to true')
-        threading.Thread(target=send_usage_stats).start()
+    singer.utils.check_config(config, REQUIRED_CONFIG_KEYS)
 
-    input = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    state = persist_lines(config, input)
+    input_ = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
+    state = write_records(config, input_)
 
-    emit_state(state)
-    logger.debug("Exiting normally")
+    _emit_state(state)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

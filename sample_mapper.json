@@ -1,0 +1,8 @@
+{
+  "string_key_a": {
+    "target_key": "Some_String_Key_Name_On_Pardot"
+  },
+  "binary_key_b": {
+    "target_key": "Some_Checkbox_Key_Name_On_Pardot_0"  // Make sure you put "_0"
+  }
+}

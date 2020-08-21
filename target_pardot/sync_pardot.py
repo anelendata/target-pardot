@@ -1,26 +1,28 @@
-import json, logging, sys
+import logging, sys
+import simplejson as json
+
 from pardot.client import APIClient
 from pardot.resource import PardotAPIException
+
 import singer
 
-client = None
+from . import utils
 
-logging.basicConfig(stream=sys.stdout,
-                    format="%(asctime)s - " + str(__name__) + " - %(name)s - %(levelname)s - %(message)s",
-                    level=logging.INFO)
-LOGGER = logging.getLogger(__name__)
+
+CLIENT = None
+LOGGER = utils.get_logger(__name__)
 
 
 def get_client(config=None):
-    global client
-    if client is None:
+    global CLIENT
+    if CLIENT is None:
         if not config:
             raise KeyError("Need to set config")
 
-        client = APIClient(config["email"],
+        CLIENT = APIClient(config["email"],
                            config["password"],
                            config["user_key"])
-    return client
+    return CLIENT
 
 
 def write(config, record, mapper, dryrun=True):
