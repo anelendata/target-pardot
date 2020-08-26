@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
 import argparse
+import csv
 import io
 import logging
 import os
 import sys
 import simplejson as json
 import urllib
-from datetime import datetime
 import collections
+
+from datetime import datetime
+from tempfile import NamedTemporaryFile
 
 import pkg_resources
 from jsonschema.validators import Draft4Validator
@@ -24,28 +27,30 @@ REQUIRED_CONFIG_KEYS = ["email", "password", "user_key", "email_field"]
 logger = utils.get_logger(__name__, "debug")
 
 
-def write_records(config, lines):
+def sync(config, lines):
     state = None
     schemas = {}
     key_properties = {}
-    headers = {}
     validators = {}
     on_invalid_record = config.get("on_invalid_record", "abort")
 
+    streaming = config.get("streaming", False)
+    delete_tempfile = config.get("delete_tempfile", True)
     dry_run = config.get("dry_run", False)
-    if dry_run:
-        logger.info("Dry-run mode")
+    logger.info("streaming %s. delete_tempfile %s. Dry-run mode %s" %
+                (streaming, delete_tempfile, dry_run))
 
     with open(config["mapper_file"], "r") as f:
-        mapper = json.load(f)
+        mappers = json.load(f)
+
+    record_count = collections.defaultdict(int)
+    write_count = collections.defaultdict(int)
+    invalids = collections.defaultdict(int)
+    errors = collections.defaultdict(int)
+    tempfiles = {}
+    csv_writers = {}
 
     # Loop over lines from stdin
-    record_count = 0
-    write_count = 0
-    invalids = 0
-
-    errors = collections.defaultdict(int)
-
     for line in lines:
         try:
             message = singer.parse_message(line)
@@ -54,29 +59,61 @@ def write_records(config, lines):
             raise
 
         if isinstance(message, singer.RecordMessage):
-            record, invalids = clean_and_validate(
-                message, schemas, invalids, on_invalid_record,
+            stream = message.stream
+            if stream not in mappers.keys():
+                logger.info("Skipping the stream not present in the mapper: " +
+                            stream)
+                continue
+
+            mapper = mappers[stream]
+            record, invalids[stream] = clean_and_validate(
+                message, schemas, invalids[stream], on_invalid_record,
                 flatten_record=True, json_dumps=False)
 
-            # if len(invalids) > 0:
+            # if len(invalids[stream]) > 0:
             #     pass
 
-            try:
-                destination.write(config, record, mapper, dryrun=dry_run)
-            except Exception as e:
-                prospect_email = record[config["email_field"]]
-                logger.debug("Error in updating " + prospect_email + " : " +
-                             str(e))
-                errors[e.args[1]] += 1
-                logger.debug(errors)
+            record_count[stream] = record_count[stream] + 1
+            if streaming:
+                try:
+                    destination.write_stream(config, record, mapper,
+                                             dryrun=dry_run)
+                except Exception as e:
+                    prospect_email = record[config["email_field"]]
+                    logger.debug("Error in updating " + prospect_email + " : " +
+                                 str(e))
+                    errors[e.args[1]] += 1
+                    logger.debug(errors)
+                else:
+                    write_count[stream] = write_count[stream] + 1
+
             else:
-                write_count = write_count + 1
+                pardot_record = {"email": record[config["email_field"]]}
+                for key in mapper.keys():
+                    pardot_key = mapper[key]["target_key"]
+                    value = record[key]
+                    # Docs says:
+                    # nullOverwrite: (Optional, default true) When set to true
+                    # and updating an existing record, if the value in the input
+                    # is an empty string or a string containing any number of
+                    # whitespaces then the value in the database is set to empty
+                    # string or null. When set to false the empty input value is
+                    # ignored and the existing value in the database isn't
+                    # updated. If the input row is a "Create" then this option
+                    # is ignored and the empty string or null is present in
+                    # the database.
+                    # https://developer.pardot.com/kb/api-version-3/import
+                    # But an empty string does not update the value. It has
+                    # to be whitespaces if I want to nullify the field.
+                    if value is None:
+                        value = " "
+                    pardot_record[pardot_key] = value
+                csv_writers[stream].writerow(pardot_record)
+                write_count[stream] = write_count[stream] + 1
 
-            record_count = record_count + 1
-
-            if record_count % 100 == 0:
-                logger.debug("Read %d records" % record_count)
-                logger.debug("Wrote %d records" % write_count)
+            if record_count[stream] % 100 == 0:
+                logger.debug("Read %d records" % record_count[stream])
+                logger.debug("Wrote %d records" % write_count[stream])
 
             state = None
 
@@ -94,9 +131,23 @@ def write_records(config, lines):
 
         elif isinstance(message, singer.SchemaMessage):
             stream = message.stream
+            if stream not in mappers.keys():
+                continue
+
+            mapper = mappers[stream]
             schemas[stream] = message.schema
             validators[stream] = Draft4Validator(message.schema)
             key_properties[stream] = message.key_properties
+
+            if not streaming:
+                tempfiles[stream] = NamedTemporaryFile(mode='w', delete=False)
+                logger.info("temp file for %s: %s" %
+                            (stream, tempfiles[stream].name))
+                field_names = [v["target_key"] for v in mapper.values()]
+                field_names = ["email"] + field_names
+                csv_writers[stream] = csv.DictWriter(
+                    tempfiles[stream], fieldnames=field_names)
+                csv_writers[stream].writeheader()
 
         elif isinstance(message, singer.ActivateVersionMessage):
             # This is experimental and won't be used yet
@@ -106,8 +157,24 @@ def write_records(config, lines):
             raise Exception("Unknown message type {} in message {}"
                             .format(message.type, message))
 
-    logger.info("Read %d records" % record_count)
-    logger.info("Wrote %d records" % write_count)
+    # This is for streaming=False only
+    for stream in tempfiles:
+        tempfiles[stream].close()
+
+        if not dry_run:
+            destination.write_batch(config, file_name=tempfiles[stream].name)
+            logger.debug("Uploaded the prospects from the tempfile for stream %s: %s" %
+                         (stream, tempfiles[stream].name))
+
+        if delete_tempfile:
+            os.unlink(tempfiles[stream].name)
+            logger.debug("Deleted the tempfile for stream %s: %s" %
+                         (stream, tempfiles[stream].name))
+
+    for stream in schemas.keys():
+        logger.info("Read %d records" % record_count[stream])
+        logger.info("Wrote %d records" % write_count[stream])
+
     for key in errors.keys():
         logger.info("Unsuccessful cause - %s - %d records" % (key, errors[key]))
 
@@ -142,8 +209,7 @@ def main():
     singer.utils.check_config(config, REQUIRED_CONFIG_KEYS)
 
     input_ = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
-    state = write_records(config, input_)
-
+    state = sync(config, input_)
     _emit_state(state)
 
 
