@@ -1,8 +1,7 @@
 import logging, sys
 import simplejson as json
 
-from pardot.client import APIClient
-from pardot.resource import PardotAPIException
+from pypardot.client import PardotAPI
 
 import singer
 
@@ -19,9 +18,11 @@ def get_client(config=None):
         if not config:
             raise KeyError("Need to set config")
 
-        CLIENT = APIClient(config["email"],
-                           config["password"],
-                           config["user_key"])
+        CLIENT = PardotAPI(email=config["email"],
+                           password=config["password"],
+                           user_key=config["user_key"],
+                           version=3)
+        CLIENT.authenticate()
     return CLIENT
 
 
@@ -33,6 +34,15 @@ def write(config, record, mapper, dryrun=True):
         pardot_key = mapper[key]["target_key"]
         kwargs[pardot_key] = record[key]
     if dryrun is False:
-        response = client.prospect.update(prospect_email, **kwargs)
-        prospect = response["prospect"]
+        prospect = client.prospect.update_by_email(prospect_email, **kwargs)
         LOGGER.debug("Wrote {id} {email} https://pi.pardot.com/prospect/read?id={id}".format(**prospect))
+
+
+def write_batch(config, file_name):
+    client = get_client(config)
+    results = client.importapi.create(
+        file_name=file_name,
+        operation="Upsert", object="Prospect",
+        nullOverwrite=config.get("null_overwrite", True))
+    batch_id = results["id"]
+    results = client.importapi.update(id=batch_id, state="Ready")

@@ -29,11 +29,15 @@ setup(
 
     install_requires=[
         "jsonschema==2.6.0",  # singer-pythin requires exact
-        "pardot-api-client @ https://github.com/anelendata/pardot-api-client/tarball/6f2780442ce91faf7ce71d1b7e075eba4ec96175#egg=pardot-api-client",
         "singer-python>=5.2.0",
         "setuptools>=40.3.0",
+        "PyPardot4 @ https://github.com/anelendata/PyPardot4/archive/9b073ac3d24a74107c1af28324893452c8d54c95.zip#egg=PyPardot4-1.1.15"
+        # "PyPardot4 @ https://github.com/anelendata/PyPardot4/archive/9b073ac3d24a74107c1af28324893452c8d54c95.tar.gz#egg=PyPardot4-1.1.15",
     ],
-
+    dependency_links=[
+        # "git+https://github.com/anelendata/PyPardot4.git@9b073ac3d24a74107c1af28324893452c8d54c95#egg=PyPardot4-1.1.15.dev"
+        # "git+https://github.com/anelendata/PyPardot4/tarball/9b073ac3d24a74107c1af28324893452c8d54c95#egg=PyPardot4-1.1.15.dev"
+    ],
     entry_points="""
     [console_scripts]
     target-pardot=target_pardot:main
