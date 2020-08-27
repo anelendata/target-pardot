@@ -105,7 +105,7 @@ def sync(config, lines):
                     # https://developer.pardot.com/kb/api-version-3/import
                     # But an empty string does not update the value. It has
                     # to be whitespaces if I want to nullify the field.
-                    if value is None:
+                    if value is None or value == "None" or value == "":
                         value = " "
                     pardot_record[pardot_key] = value
                 csv_writers[stream].writerow(pardot_record)
