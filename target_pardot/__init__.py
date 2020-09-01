@@ -76,8 +76,8 @@ def sync(config, lines):
             record_count[stream] = record_count[stream] + 1
             if streaming:
                 try:
-                    destination.write_stream(config, record, mapper,
-                                             dryrun=dry_run)
+                    destination.write(config, record, mapper,
+                                      dryrun=dry_run)
                 except Exception as e:
                     prospect_email = record[config["email_field"]]
                     logger.debug("Error in updating " + prospect_email + " : " +
@@ -162,7 +162,8 @@ def sync(config, lines):
         tempfiles[stream].close()
 
         if not dry_run:
-            destination.write_batch(config, file_name=tempfiles[stream].name)
+            destination.write_batch(config, file_name=tempfiles[stream].name,
+                                    mapper=mappers[stream])
             logger.debug("Uploaded the prospects from the tempfile for stream %s: %s" %
                          (stream, tempfiles[stream].name))
 
