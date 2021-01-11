@@ -18,11 +18,17 @@ def get_client(config=None):
         if not config:
             raise KeyError("Need to set config")
 
-        CLIENT = PardotAPI(email=config["email"],
-                           password=config["password"],
-                           user_key=config["user_key"],
-                           version=3)
-        CLIENT.authenticate()
+        sf_consumer_key = config["consumer_key"]
+        sf_consumer_secret = config["consumer_secret"]
+        sf_refresh_token = config["refresh_token"]
+        business_unit_id = config["business_unit_id"]
+        version = config.get("version", 3)
+
+        CLIENT = PardotAPI(sf_consumer_key=sf_consumer_key,
+                           sf_consumer_secret=sf_consumer_secret,
+                           sf_refresh_token=sf_refresh_token,
+                           business_unit_id=business_unit_id,
+                           version=version)
     return CLIENT
 
 

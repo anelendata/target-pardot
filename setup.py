@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup
 
-VERSION = "0.1.0b0"
+VERSION = "0.1.0"
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -31,12 +31,9 @@ setup(
         "jsonschema==2.6.0",  # singer-pythin requires exact
         "singer-python>=5.2.0",
         "setuptools>=40.3.0",
-        "PyPardot4 @ https://github.com/anelendata/PyPardot4/archive/9b073ac3d24a74107c1af28324893452c8d54c95.zip#egg=PyPardot4-1.1.15"
-        # "PyPardot4 @ https://github.com/anelendata/PyPardot4/archive/9b073ac3d24a74107c1af28324893452c8d54c95.tar.gz#egg=PyPardot4-1.1.15",
+        "PyPardot4 @ https://github.com/anelendata/PyPardot4/archive/42e81df45a8838c97e97e7a5cefc80b897e4dc69.zip#egg=PyPardot4-1.1.15"
     ],
     dependency_links=[
-        # "git+https://github.com/anelendata/PyPardot4.git@9b073ac3d24a74107c1af28324893452c8d54c95#egg=PyPardot4-1.1.15.dev"
-        # "git+https://github.com/anelendata/PyPardot4/tarball/9b073ac3d24a74107c1af28324893452c8d54c95#egg=PyPardot4-1.1.15.dev"
     ],
     entry_points="""
     [console_scripts]

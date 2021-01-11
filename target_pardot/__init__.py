@@ -22,7 +22,8 @@ from . import sync_pardot as destination
 from .schema import clean_and_validate
 
 
-REQUIRED_CONFIG_KEYS = ["email", "password", "user_key", "email_field"]
+REQUIRED_CONFIG_KEYS = ["consumer_key", "consumer_secret", "refresh_token",
+                        "business_unit_id"]
 
 logger = utils.get_logger(__name__, "debug")
 
