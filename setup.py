@@ -31,7 +31,7 @@ setup(
         "jsonschema==2.6.0",  # singer-pythin requires exact
         "singer-python>=5.2.0",
         "setuptools>=40.3.0",
-        "PyPardot4 @ https://github.com/anelendata/PyPardot4/archive/42e81df45a8838c97e97e7a5cefc80b897e4dc69.zip#egg=PyPardot4-1.1.15"
+        "PyPardotSF>=0.1.1",
     ],
     dependency_links=[
     ],

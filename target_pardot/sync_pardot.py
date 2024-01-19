@@ -66,5 +66,7 @@ def write_batch(config, file_name, mapper=None):
         object="Prospect",
         columns=columns,
         restoreDeleted=config.get("restore_deleted", False))
+    LOGGER.info(results)
     batch_id = results["id"]
     results = client.importapi.update(id=batch_id, state="Ready")
+    LOGGER.info(results)

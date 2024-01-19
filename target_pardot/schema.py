@@ -1,8 +1,17 @@
 import collections, datetime
 import simplejson as json
+import sys
+
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
+
+if sys.version_info.major == 3 and sys.version_info.minor >= 10:
+    from collections.abc import MutableMapping
+else:
+    from collections import MutableMapping
+
 import singer
+
 
 # StitchData compatible timestamp meta data
 #  https://www.stitchdata.com/docs/data-structure/system-tables-and-columns
@@ -15,7 +24,7 @@ def _flatten(d, parent_key='', sep='__'):
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
+        if isinstance(v, MutableMapping):
             items.extend(flatten(v, new_key, sep=sep).items())
         else:
             items.append((new_key, str(v) if type(v) is list else v))

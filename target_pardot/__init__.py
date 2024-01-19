@@ -103,7 +103,7 @@ def sync(config, lines):
                     # updated. If the input row is a "Create" then this option
                     # is ignored and the empty string or null is present in
                     # the database.
-                    # https://developer.pardot.com/kb/api-version-3/import
+                    # https://developer.salesforce.com/docs/marketing/pardot/guide/import-v4.html#create
                     # But an empty string does not update the value. It has
                     # to be whitespaces if I want to nullify the field.
                     if value is None or value == "None" or value == "":
@@ -165,12 +165,12 @@ def sync(config, lines):
         if not dry_run:
             destination.write_batch(config, file_name=tempfiles[stream].name,
                                     mapper=mappers[stream])
-            logger.debug("Uploaded the prospects from the tempfile for stream %s: %s" %
+            logger.info("Uploaded the prospects from the tempfile for stream %s: %s" %
                          (stream, tempfiles[stream].name))
 
         if delete_tempfile:
             os.unlink(tempfiles[stream].name)
-            logger.debug("Deleted the tempfile for stream %s: %s" %
+            logger.info("Deleted the tempfile for stream %s: %s" %
                          (stream, tempfiles[stream].name))
 
     for stream in schemas.keys():
